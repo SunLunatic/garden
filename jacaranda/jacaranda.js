@@ -5,28 +5,48 @@
     var Jacaranda = function (element, options) {
         this.target = $(element);
         this.options = options;
-        this.options["params"]["leaf"] = this.options["params"]["leaf"] || "_isLeaf";
-        this.options["params"]["children"] = this.options["params"]["children"] || "_children";
-        this.options["params"]["showVal"] = this.options["params"]["showVal"] || "_value";
         this.init();
     };
     Jacaranda.prototype = {
         constructor: Jacaranda,
         init: function () {
-        	var that = this;
-            var data = this.options["data"];
-            var dataObj = $.evalJSON(data);
+            var that = this;
+            var data = this.options.data;
             var htmlStr = '<div class="jcrd-tree jcrd-tree-unselectable">';
-            $(dataObj).each(function(){
-                htmlStr += JcrdGlobal.renderToHtml(this, that.options["params"]);
+            var isSynac = !!this.options.synac;
+            $(data).each(function(){
+                htmlStr += JcrdGlobal.renderToHtml(this, that.options, isSynac, true);
             });
             htmlStr += '</div>';
             this.target.append(htmlStr);
             $(this.target).on("click", ".fa-plus-square-o", function (event) {
-                $(this).removeClass("fa-plus-square-o");
-                $(this).addClass("fa-minus-square-o");
-                $(this).parent().next(".jcrd-tree-package-content").removeClass("jcrd-content-hide");
-                event.stopPropagation();
+                var $this = $(this);
+                $this.removeClass("fa-plus-square-o");
+                if($this.attr("init") == "false"){
+                	$this.addClass("fa-spinner");
+                	$this.addClass("fa-spin");
+                    $.ajax({
+                        url: that.options.synac,
+                        type: "POST",
+                        dataType: "json",
+                        data: {
+                            parentId: $this.next().attr("data-id")
+                        },
+                        success: function(data){
+                            var dataObj = {children: data};
+                            $this.removeClass("fa-spinner");
+                            $this.removeClass("fa-spin");
+                            $this.addClass("fa-minus-square-o");
+                            $this.parent().after(JcrdGlobal.renderToHtml(dataObj, that.options, isSynac, false));
+                            $this.parent().next(".jcrd-tree-package-content").removeClass("jcrd-content-hide");
+                            event.stopPropagation();
+                        }
+                    });
+                }else{
+                    $this.addClass("fa-minus-square-o");
+                    $this.parent().next(".jcrd-tree-package-content").removeClass("jcrd-content-hide");
+                    event.stopPropagation();
+                }
             });
             $(this.target).on("click", ".fa-minus-square-o", function (event) {
                 $(this).removeClass("fa-minus-square-o");
@@ -96,25 +116,35 @@
         return jcrdTree;
     };
     $.fn.jacaranda.defaults = {
-        data: {},
+        data: null,
         clickCb: null,
-        params: {},
-        synac: {}
+        leaf: "leaf",
+        children: "children",
+        text: "name",
+        synac: false
     };
     var JcrdGlobal = {
-        renderToHtml: function (dataObj, params) {
+        renderToHtml: function (dataObj, options, isSynac, buildHead) {
             var htmlStr = "";
-            htmlStr += '<div class="jcrd-tree-package"><div class="jcrd-tree-package-header">';
-            if (dataObj[params["leaf"]] == "false" || (!dataObj["_children"] && dataObj !== Array)) {
-                htmlStr += '<i class="fa"></i>';
-            } else {
-                htmlStr += '<i class="fa fa-plus-square-o fa-1x"></i>';
+            if(buildHead) {
+                htmlStr += '<div class="jcrd-tree-package"><div class="jcrd-tree-package-header">';
+                //是否包含下一级节点 leaf = true/false 优先级最高 当leaf未定义时根据是否有children决定
+                if (dataObj[options.leaf] == "true" || (dataObj[options.leaf] == undefined && !dataObj[options.children])) {
+                    htmlStr += '<i class="fa"></i>';
+                } else {
+                    htmlStr += '<i class="fa fa-plus-square-o fa-1x" ';
+                    if (isSynac) htmlStr += 'init="false" ';
+                    htmlStr += '></i>';
+                }
+
+                htmlStr += '<div ' + JcrdGlobal.addAttrs(dataObj, options) + ' class="jcrd-tree-package-name">'
+                    + dataObj[options.text] + '</div></div>';
             }
-            htmlStr += '<div ' + JcrdGlobal.addAttrs(dataObj, params) + ' class="jcrd-tree-package-name">' + dataObj[params["showVal"]] + '</div></div>';
-            if (dataObj[params["leaf"]] != "false" && dataObj[params["children"]]) {
+
+            if (dataObj[options["leaf"]] != "false" && dataObj[options["children"]]) {
                 htmlStr += '<div class="jcrd-tree-package-content jcrd-content-hide">';
-                for (var childKey in dataObj[params["children"]]) {
-                    htmlStr += JcrdGlobal.renderToHtml(dataObj[params["children"]][childKey], params);
+                for (var childKey in dataObj[options.children]) {
+                    htmlStr += JcrdGlobal.renderToHtml(dataObj[options.children][childKey], options, isSynac, true);
                 }
                 htmlStr += "</div>";
             }
@@ -124,9 +154,10 @@
         addAttrs: function (dataObj, params) {
             var htmlStr = "";
             for (var key in dataObj) {
-                if (!key || params["showVal"] == key || params["children"] == key) continue;
+                if (!key || params.text == key || params.children == key) continue;
                 if("id" == key){
                     htmlStr += JcrdGlobal.addAttr("id", "_jcrd_"+dataObj[key]);
+                    htmlStr += JcrdGlobal.addAttr("data-id", dataObj[key]);
                     continue;
                 }
                 htmlStr += JcrdGlobal.addAttr(key, dataObj[key]);
@@ -134,7 +165,7 @@
             return htmlStr;
         },
         addAttr: function (attName, attVal) {
-            return attName + '=' + attVal + ' ';
+            return attName + '="' + attVal + '" ';
         }
     };
 })(jQuery);
